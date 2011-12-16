@@ -29,6 +29,10 @@ Irssi::theme_register([
 #  'whois_begin', '/whois for $0:',
 ]);
 
+my $sb_pos = 0;
+my $sprawl_sb_timeout;
+my $sprawl_sb_dbl=0;
+
 sub add_window_level {
   my($window_name, $level) = @_;
 
@@ -122,23 +126,77 @@ sub cmd_go {
   }
 }
 
+sub sprawl_sb_show {
+  my ( $item, $get_size_only ) = @_;
+  my $text = sprawl_sb_get();
+  $item->default_handler($get_size_only, "{sb %m.:%n[". $text ."]%m:.%n}", undef, 1);
+}
+sub sprawl_sb_setup {
+  my $interval = Irssi::settings_get_int("sprawl_sb_interval");
+  if ( !$interval || $interval < 10 ) {
+    $interval = 500;
+  }
+
+  Irssi::timeout_remove($sprawl_sb_timeout);
+  $sprawl_sb_timeout = Irssi::timeout_add($interval, "sprawl_sb_redraw", undef);
+}
+
+sub sprawl_sb_redraw { Irssi::statusbar_items_redraw('sprawl_sb'); }
+
+sub sprawl_sb_get {
+  my $text = "";
+  my @chars  = split //, "sprawl";
+  my $total = $#chars;
+  
+  for my $i (0..$total) {
+    if ($i == $sb_pos) {
+      $text .= "%m" . $chars[$i] . "%n";
+    } else {
+      $text .= $chars[$i];
+    }
+  }
+
+  if ( $sprawl_sb_dbl )
+  {
+    $sprawl_sb_dbl=0;
+    return $text;
+  } else {
+    $sprawl_sb_dbl=1;
+  }
+
+  $sb_pos++;
+  if ( $sb_pos > $total ) {
+    $sb_pos = 0;
+  }
+
+  return $text;
+}
+
 sub initialize {
 
   # config...
+  Irssi::statusbar_item_register('sprawl_sb', '$0', 'sprawl_sb_show');
+  Irssi::settings_add_int('sprawl', 'sprawl_sb_interval', 500);
+
   Irssi::command("SET timestamp_format %H:%M:%S");
   Irssi::command("SET theme scripts/sprawl/sprawl.theme");
   Irssi::command("SET window_history on");
+  Irssi::command("statusbar window add -after user sprawl_sb");
 
   # signals
-  Irssi::signal_add_first('event 311', \&sig_whois);
-  Irssi::signal_add('redir_whois_end', sub { add_window_level( 'status', 'crap' ) } );
+  Irssi::signal_add_first("event 311", \&sig_whois);
+  Irssi::signal_add("redir_whois_end", sub { add_window_level( 'status', 'crap' ) } );
   Irssi::signal_add("event mode", "sig_mode");
   Irssi::signal_add_first("complete word", "sig_complete_go");
+  Irssi::signal_add("setup changed", "sprawl_sb_setup");
 
   # commands
   Irssi::command_bind("g", "cmd_go");
 
-  # script load
+  # kickstart stuff
+  sprawl_sb_setup();
+
+  # script loaded
   Irssi::printformat(MSGLEVEL_CLIENTCRAP, 'sprawl_loaded', $IRSSI{name}, $VERSION, $IRSSI{authors});
 }
 
