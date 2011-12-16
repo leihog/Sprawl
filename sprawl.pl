@@ -41,6 +41,25 @@ sub remove_window_level {
   Irssi::window_find_name("($window_name)")->command("^window level -$level");
 }
 
+# tab completion for /g <winname>
+sub sig_complete_go {
+  my ($complist, $window, $word, $linestart, $want_space) = @_;
+  my $channel = $window->get_active_name();
+  my $k = Irssi::parse_special('$k');
+  return unless ($linestart =~ /^\Q${k}\Eg/i);
+
+  @$complist = ();
+  foreach my $w (Irssi::windows) {
+    my $name = $w->get_active_name();
+    if ($word != "" && $name =~ /\Q${word}\E/i) {
+      push(@$complist, $name);
+    } else {
+      push(@$complist, $name);
+    }
+  }
+  Irssi::signal_stop();
+}
+
 sub sig_whois {
 
   my ($server, $data, $nick, $host) = @_;
@@ -56,15 +75,68 @@ sub sig_whois {
 #  $awin->printformat(MSGLEVEL_CRAP, "whois_begin", $nick);
 }
 
+# Will highlight the window in the statusbar 
+# if your chanop status changes.
+sub sig_mode {
+  my ($server, $data, $nick) = @_;
+  my ($channel, $mode, $rest) = split(/ /, $data, 3);
+  my $win = Irssi::active_win();
+  my $winchan = $server->window_find_item($channel);
+
+  return if $win->{refnum} == $winchan->{refnum};
+
+  my @rest = split(/ +/, $rest);
+  return unless grep {/^$server->{nick}$/} @rest;
+
+  my $par = undef;
+  my $i = 0;
+  my $isop = $winchan->{active}->{chanop};
+  my $change = $isop;
+
+  for my $c (split(//, $mode)) {
+    if ($c =~ /[+-]/) {
+      $par = $c;
+    } elsif ($c == "o") {
+      $change = ($par == "+" ? 1 : 0) if $rest[$i] == $server->{nick};
+    } elsif ( $c =~ /[vbkeIqhdO]/ || ($c == "1" && $par == "+") ) {
+      $i++;
+    }
+  }
+
+  $winchan->activity(4) unless $change == $isop;
+}
+
+####
+# Commands
+
+sub cmd_go {
+  my ($chan, $server, $witem) = @_;
+
+  $chan =~ s/ *//g;
+  foreach my $w (Irssi::windows) {
+    my $name = $w->get_active_name();
+    if ($name =~ /^[#&+]?\Q${chan}\E/) {
+      $w->set_active();
+      return;
+    }
+  }
+}
+
 sub initialize {
 
+  # config...
   Irssi::command("SET timestamp_format %H:%M:%S");
   Irssi::command("SET theme scripts/sprawl/sprawl.theme");
   Irssi::command("SET window_history on");
 
-  # redir
+  # signals
   Irssi::signal_add_first('event 311', \&sig_whois);
   Irssi::signal_add('redir_whois_end', sub { add_window_level( 'status', 'crap' ) } );
+  Irssi::signal_add("event mode", "sig_mode");
+  Irssi::signal_add_first("complete word", "sig_complete_go");
+
+  # commands
+  Irssi::command_bind("g", "cmd_go");
 
   # script load
   Irssi::printformat(MSGLEVEL_CLIENTCRAP, 'sprawl_loaded', $IRSSI{name}, $VERSION, $IRSSI{authors});
