@@ -33,6 +33,12 @@ my $sb_pos = 0;
 my $sprawl_sb_timeout;
 my $sprawl_sb_dbl=0;
 
+my $karmabomb_server;
+my $karmabomb_count;
+my $karmabomb_target;
+my $karmabomb_payload;
+my $karmabomb_timer;
+
 sub add_window_level {
   my($window_name, $level) = @_;
 
@@ -113,6 +119,9 @@ sub sig_mode {
 ####
 # Commands
 
+# @todo will stop at the first matching window name. 
+# If #cookie comes before #cook in the window list
+# #cookie will be shown even tho the user types #cook.
 sub cmd_go {
   my ($chan, $server, $witem) = @_;
 
@@ -124,6 +133,41 @@ sub cmd_go {
       return;
     }
   }
+}
+
+sub do_karmabomb {
+
+  $karmabomb_server->send_message($karmabomb_target, $karmabomb_payload, 1);  
+
+  if (--$karmabomb_count > 0) {
+    $karmabomb_timer = Irssi::timeout_add_once(60000, "do_karmabomb", undef);
+  } else {
+    my $win = Irssi::active_win();
+    $win->print("karmabomb against $karmabomb_target ended.");
+
+    undef $karmabomb_server;
+    undef $karmabomb_target;
+    undef $karmabomb_payload;
+  }
+}
+
+sub cmd_karmabomb {
+  my ($params, $server, $witem) = @_;
+  my ($target, $payload, $count) = split(/ /, $params);
+  my $win = Irssi::active_win();
+
+  if ( $karmabomb_timer ) {
+    $win->print("A karmabomb is already active.");
+    return;
+  }
+
+  $karmabomb_server = $server;
+  $karmabomb_target = $target;
+  $karmabomb_count  = $count;
+  $karmabomb_payload = $payload;
+  
+  $win->print("Will karmabomb $target with payload $payload $count times.");
+  do_karmabomb();
 }
 
 sub sprawl_sb_show {
@@ -192,6 +236,7 @@ sub initialize {
 
   # commands
   Irssi::command_bind("g", "cmd_go");
+  Irssi::command_bind("karmabomb", "cmd_karmabomb");
 
   # kickstart stuff
   sprawl_sb_setup();
