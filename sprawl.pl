@@ -10,8 +10,9 @@
 use strict;
 use Irssi;
 use vars qw($VERSION %IRSSI);
+use Irssi::TextUI;
 
-$VERSION = "0.4";
+$VERSION = "0.4.2";
 
 %IRSSI = (
     authors     => 'Leif Högberg',
@@ -146,6 +147,7 @@ sub do_karmabomb {
     $win->print("karmabomb against $karmabomb_target ended.");
 
     undef $karmabomb_server;
+    undef $karmabomb_timer;
     undef $karmabomb_target;
     undef $karmabomb_payload;
   }
