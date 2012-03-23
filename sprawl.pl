@@ -78,15 +78,15 @@ sub sig_whois {
 
   remove_window_level( 'status', 'crap' );
   $server->redirect_event("whois", 1, "$nick", 0, undef, {
-	"event 318" => "redir_whois_end",
-	"event 369" => "redir_whois_end"
+    "event 318" => "redir_whois_end",
+    "event 369" => "redir_whois_end"
   });
 
 #  my $awin = Irssi::active_win();
 #  $awin->printformat(MSGLEVEL_CRAP, "whois_begin", $nick);
 }
 
-# Will highlight the window in the statusbar 
+# Will highlight the window in the statusbar
 # if your chanop status changes.
 sub sig_mode {
   my ($server, $data, $nick) = @_;
@@ -167,24 +167,51 @@ sub cmd_karmabomb {
   $karmabomb_target = $target;
   $karmabomb_count  = $count;
   $karmabomb_payload = $payload;
-  
+
   $win->print("Will karmabomb $target with payload $payload $count times.");
   do_karmabomb();
 }
 
+sub sprawl_sb_start {
+    my ( $item, $get_size_only ) = @_;
+    my $text = '';
+    if ( !Irssi::settings_get_bool('sprawl_animated') ) {
+      $text = "%m.:.%n";
+    }
+
+    $item->default_handler($get_size_only, $text, undef, 1);
+}
+
 sub sprawl_sb_show {
   my ( $item, $get_size_only ) = @_;
-  my $text = sprawl_sb_get();
+  my $text = "sprawl";
+  if ( Irssi::settings_get_bool('sprawl_animated') ) {
+    $text = sprawl_sb_get();
+  }
   $item->default_handler($get_size_only, "{sb %m.:%n[". $text ."]%m:.%n}", undef, 1);
 }
+
 sub sprawl_sb_setup {
+  # Must be a better way to add these...
+  Irssi::command("statusbar window add -after user sprawl_sb");
+  Irssi::command("statusbar window add -after barstart sprawl_sb_start");
+  if ( !Irssi::settings_get_bool('sprawl_animated') ) {
+    Irssi::command("statusbar window remove time");
+  } else {
+    Irssi::command("statusbar window add -after barstart time");
+  }
+
   my $interval = Irssi::settings_get_int("sprawl_sb_interval");
   if ( !$interval || $interval < 10 ) {
     $interval = 500;
   }
 
   Irssi::timeout_remove($sprawl_sb_timeout);
-  $sprawl_sb_timeout = Irssi::timeout_add($interval, "sprawl_sb_redraw", undef);
+  if ( !Irssi::settings_get_bool('sprawl_animated') ) {
+    sprawl_sb_redraw();
+  } else {
+    $sprawl_sb_timeout = Irssi::timeout_add($interval, "sprawl_sb_redraw", undef);
+  }
 }
 
 sub sprawl_sb_redraw { Irssi::statusbar_items_redraw('sprawl_sb'); }
@@ -193,7 +220,7 @@ sub sprawl_sb_get {
   my $text = "";
   my @chars  = split //, "sprawl";
   my $total = $#chars;
-  
+
   for my $i (0..$total) {
     if ($i == $sb_pos) {
       $text .= "%m" . $chars[$i] . "%n";
@@ -222,19 +249,26 @@ sub initialize {
 
   # config...
   Irssi::statusbar_item_register('sprawl_sb', '$0', 'sprawl_sb_show');
+  Irssi::statusbar_item_register('sprawl_sb_start', '$0', 'sprawl_sb_start');
+
   Irssi::settings_add_int('sprawl', 'sprawl_sb_interval', 500);
+  Irssi::settings_add_bool('sprawl', 'sprawl_animated', 1);
 
   Irssi::command("SET timestamp_format %H:%M:%S");
   Irssi::command("SET theme scripts/sprawl/sprawl.theme");
   Irssi::command("SET window_history on");
-  Irssi::command("statusbar window add -after user sprawl_sb");
+  # Must be a better way to add these...
+  # Irssi::command("statusbar window add -after user sprawl_sb");
+  #Irssi::command("statusbar window add -after barstart sprawl_sb_start");
 
   # signals
   Irssi::signal_add_first("event 311", \&sig_whois);
   Irssi::signal_add("redir_whois_end", sub { add_window_level( 'status', 'crap' ) } );
   Irssi::signal_add("event mode", "sig_mode");
   Irssi::signal_add_first("complete word", "sig_complete_go");
-  Irssi::signal_add("setup changed", "sprawl_sb_setup");
+  Irssi::signal_add("setup changed", sub {
+    sprawl_sb_setup();
+  });
 
   # commands
   Irssi::command_bind("g", "cmd_go");
